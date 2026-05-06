@@ -5,7 +5,7 @@
 
 // original mono/left delay lengths scaled to approximately 32 kHz.
 
-static const uint32_t REVERB_NOMINAL_SAMPLE_RATE = 32000;
+static const uint32_t REVERB_NOMINAL_SAMPLE_RATE = 44100;
 
 static const int REVERB_NUM_COMBS = 8;
 static const int REVERB_NUM_ALLPASSES = 4;

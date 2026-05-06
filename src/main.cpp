@@ -15,19 +15,21 @@
 // USing 32kHz, possible improvement? Sample rate of 16 kHz confirmed to provide decent audio; 8kHz is pretty noisy
 // ADC uses 12-bit integer representation. Its integer range is thus 0 - 4095, and its voltage range is 0 - 3.3V, so 2048 is ~1.65V
 // Biasing the AC audio to ADC midpoint is important because AC has negative voltages, while the ADC/DAC is unipolar and only handles 0 - 3.3V
-static const uint32_t SAMPLE_RATE = 32000;
+static const uint32_t SAMPLE_RATE = 44100;
 static const int ADC_MID = 2048;
 
 // Increase gain to improve (NOT NECESSARY, old)
 static const int GAIN_NUM = 1;
 static const int GAIN_DEN = 1;
 
-static const uint8_t BUTTON_PIN = PC13;  // Nucleo B1 user button
+static const uint8_t BUTTON_PIN = PC13;
 volatile bool reverbEnabled = false;
+volatile bool buttonPrintPending = false;
+volatile bool buttonPrintState = false;
 
-static const float REVERB_WET = 0.40f;
+static const float REVERB_WET = 0.45f;
 static const float REVERB_DRY = 0.90f;
-static const float REVERB_ROOMSIZE = 0.72f;
+static const float REVERB_ROOMSIZE = 0.69f;
 static const float REVERB_DAMPING = 0.20f;
 
 // Hardware timer enforces precise timing which is good for audio
@@ -190,6 +192,20 @@ void audioISR() {
   sampleCount++; // debug
 }
 
+void buttonISR() {
+  static volatile uint32_t lastPressUs = 0;
+
+  uint32_t now = micros();
+
+  // Simple debounce, ignore edges within 250 ms
+  if ((uint32_t)(now - lastPressUs) > 250000UL) {
+    reverbEnabled = !reverbEnabled;
+    buttonPrintState = reverbEnabled;
+    buttonPrintPending = true;
+    lastPressUs = now;
+  }
+}
+
 void setup() {
   Serial.setTx(PA2);
   Serial.setRx(PA3);
@@ -204,6 +220,7 @@ void setup() {
   setupDAC();
 
   pinMode(BUTTON_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, RISING);
 
   // Initialize reverb before enabling the audio interrupt
   reverbInit(SAMPLE_RATE);
@@ -219,22 +236,15 @@ void setup() {
 }
 
 void loop() {
-  static bool lastButtonState = LOW; // button code
-  static uint32_t lastDebounceTime = 0;
+  if (buttonPrintPending) {
+    noInterrupts();
+    bool state = buttonPrintState;
+    buttonPrintPending = false;
+    interrupts();
 
-  bool currentButtonState = digitalRead(BUTTON_PIN);
-
-  if (currentButtonState == HIGH && lastButtonState == LOW) {
-    if (millis() - lastDebounceTime > 250) {
-      reverbEnabled = !reverbEnabled;
-      lastDebounceTime = millis();
-
-      Serial.print("Reverb: ");
-      Serial.println(reverbEnabled ? "ON" : "OFF");
-    }
+    Serial.print("Reverb: ");
+    Serial.println(state ? "ON" : "OFF");
   }
-
-  lastButtonState = currentButtonState;
 
   static uint32_t lastPrint = 0;
 

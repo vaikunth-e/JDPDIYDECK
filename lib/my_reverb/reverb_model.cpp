@@ -11,7 +11,7 @@ static inline float clamp01(float x) {
   return x;
 }
 
-// delay buffers in this file because model owns the full reverb network
+// delay buffers in this file because model has the full reverb network
 static float combBuf1[REVERB_COMB_TUNING_1];
 static float combBuf2[REVERB_COMB_TUNING_2];
 static float combBuf3[REVERB_COMB_TUNING_3];
