@@ -13,7 +13,7 @@
 // Sample rate of 16 kHz confirmed to provide decent audio; 8kHz is pretty noisy. Have not tested higher
 // ADC uses 12-bit integer representation. Its integer range is thus 0 - 4095, and its voltage range is 0 - 3.3V, so 2048 is ~1.65V
 // Biasing the AC audio to ADC midpoint is important because AC has negative voltages, while the ADC/DAC is unipolar and only handles 0 - 3.3V
-static const uint32_t SAMPLE_RATE = 16000;
+static const uint32_t SAMPLE_RATE = 32000;
 static const int ADC_MID = 2048;
 
 // Increase gain to improve (NOT NECESSARY, old)
@@ -21,7 +21,7 @@ static const int GAIN_NUM = 1;
 static const int GAIN_DEN = 1;
 
 // Hardware timer enforces precise timing which is good for audio
-// Timer/audio state
+// Timer/audio object's state
 HardwareTimer *audioTimer = nullptr;
 
 volatile uint32_t sampleCount = 0; // debug
@@ -62,7 +62,7 @@ void setupADC() {
   GPIOA->PUPDR &= ~GPIO_PUPDR_PUPDR0;
 
   // Give ADC12 a synchronous clock from HCLK
-  // This is important; otherwise calibration may never finish
+  // This is important; calibration may never finish
   ADC12_COMMON->CCR &= ~ADC12_CCR_CKMODE;
   ADC12_COMMON->CCR |= ADC12_CCR_CKMODE_0;   // HCLK / 1
 
@@ -97,7 +97,7 @@ void setupADC() {
   }
 
   // Configure ADC:
-  // 12-bit resolution, right aligned, single conversion, software trigger
+  // 12 bit resolution, right aligned, single conversion, software trigger
   ADC1->CFGR = 0;
 
   // Long sample time for stability with bias network
@@ -175,7 +175,7 @@ void setup() {
   Serial.setTx(PA2);
   Serial.setRx(PA3);
 
-  Serial.begin(115200);
+  Serial.begin(115200); // !!!!!!!!!!
   delay(1000); 
 
   Serial.println("Starting..."); // debug
@@ -199,11 +199,11 @@ void loop() {
     noInterrupts();
 
     uint32_t samples = sampleCount;
-    uint32_t clipsLow = clipLowCount;
+    uint32_t clipsLow = clipLowCount; // debug
     uint32_t clipsHigh = clipHighCount;
     int dc = dcEstimate;
 
-    sampleCount = 0;
+    sampleCount = 0; // debug
     clipLowCount = 0;
     clipHighCount = 0;
 
