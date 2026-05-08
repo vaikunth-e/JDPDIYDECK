@@ -3,6 +3,8 @@
 #include "stm32f3xx_hal.h" // stm32 functionality for ADC & DAC
 
 #include "reverb_model.h" // reverb functionality
+#include "ringmod.h" // ring modulation
+#include "distortion.h" // distortion
 
 // Hardware mapping
 // Input: A0 / PA0 = ADC1_IN1, Analog input
@@ -22,15 +24,27 @@ static const int ADC_MID = 2048;
 static const int GAIN_NUM = 1;
 static const int GAIN_DEN = 1;
 
-static const uint8_t BUTTON_PIN = PC13;
+static const uint8_t REVERB_BUTTON = D4;
+static const uint8_t RING_BUTTON = D2;
 volatile bool reverbEnabled = false;
-volatile bool buttonPrintPending = false;
-volatile bool buttonPrintState = false;
+volatile bool ringEnabled = false;
+volatile bool reverbPrintPending = false;
+volatile bool reverbPrintState = false;
+volatile bool ringPrintPending = false;
+volatile bool ringPrintState = false;
 
 static const float REVERB_WET = 0.45f;
 static const float REVERB_DRY = 0.90f;
 static const float REVERB_ROOMSIZE = 0.69f;
 static const float REVERB_DAMPING = 0.20f;
+
+// Ring modulation settings
+static const float RING_CARRIER_HZ = 800.0f;
+static const float RING_DRY = 0.70f;
+static const float RING_WET = 0.60f;
+
+static uint32_t ringPhase = 0;
+static uint32_t ringPhaseInc = 0;
 
 // Hardware timer enforces precise timing which is good for audio
 // Timer/audio object's state
@@ -167,12 +181,13 @@ void audioISR() {
 
   // Shift back to DAC midpoint (ADC_MID = 2048 = 1.65V)
   // Reverb functionality added if reverb enabled
-  int processed;
+  int processed = centered;
 
   if (reverbEnabled) {
-    processed = reverbProcessSample(centered);
-  } else {
-    processed = centered;
+    processed = reverbProcessSample(processed);
+  } 
+  if (ringEnabled) {
+    processed = ringModProcessSample(processed);
   }
 
   int out = processed + ADC_MID;
@@ -192,16 +207,32 @@ void audioISR() {
   sampleCount++; // debug
 }
 
-void buttonISR() {
+void reverbButtonISR() {
   static volatile uint32_t lastPressUs = 0;
 
   uint32_t now = micros();
 
-  // Simple debounce, ignore edges within 250 ms
   if ((uint32_t)(now - lastPressUs) > 250000UL) {
     reverbEnabled = !reverbEnabled;
-    buttonPrintState = reverbEnabled;
-    buttonPrintPending = true;
+
+    reverbPrintState = reverbEnabled;
+    reverbPrintPending = true;
+
+    lastPressUs = now;
+  }
+}
+
+void ringButtonISR() {
+  static volatile uint32_t lastPressUs = 0;
+
+  uint32_t now = micros();
+
+  if ((uint32_t)(now - lastPressUs) > 250000UL) {
+    ringEnabled = !ringEnabled;
+
+    ringPrintState = ringEnabled;
+    ringPrintPending = true;
+
     lastPressUs = now;
   }
 }
@@ -219,15 +250,23 @@ void setup() {
   setupADC();
   setupDAC();
 
-  pinMode(BUTTON_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonISR, RISING);
+  pinMode(REVERB_BUTTON, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(REVERB_BUTTON), reverbButtonISR, FALLING);
 
-  // Initialize reverb before enabling the audio interrupt
+  pinMode(RING_BUTTON, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(RING_BUTTON), ringButtonISR, FALLING);
+
+  // initialize reverb before enabling the audio interrupt
   reverbInit(SAMPLE_RATE);
   reverbSetWet(REVERB_WET);
   reverbSetDry(REVERB_DRY);
   reverbSetRoomSize(REVERB_ROOMSIZE);
   reverbSetDamping(REVERB_DAMPING);
+
+  // initialize ring!
+  ringModInit(SAMPLE_RATE);
+  ringModSetCarrierHz(RING_CARRIER_HZ, SAMPLE_RATE);
+  ringModSetMix(RING_DRY, RING_WET);
 
   audioTimer = new HardwareTimer(TIM3); // dont use TIM2
   audioTimer->setOverflow(SAMPLE_RATE, HERTZ_FORMAT);
@@ -236,13 +275,23 @@ void setup() {
 }
 
 void loop() {
-  if (buttonPrintPending) {
+  if (reverbPrintPending) {
     noInterrupts();
-    bool state = buttonPrintState;
-    buttonPrintPending = false;
+    bool state = reverbPrintState;
+    reverbPrintPending = false;
     interrupts();
 
     Serial.print("Reverb: ");
+    Serial.println(state ? "ON" : "OFF");
+  }
+
+  if (ringPrintPending) {
+    noInterrupts();
+    bool state = ringPrintState;
+    ringPrintPending = false;
+    interrupts();
+
+    Serial.print("Ring modulation: ");
     Serial.println(state ? "ON" : "OFF");
   }
 
