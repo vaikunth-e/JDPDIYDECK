@@ -4,7 +4,6 @@
 
 #include "reverb_model.h" // reverb functionality
 #include "ringmod.h" // ring modulation
-#include "distortion.h" // distortion
 
 // Hardware mapping
 // Input: A0 / PA0 = ADC1_IN1, Analog input
